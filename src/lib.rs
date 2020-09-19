@@ -243,8 +243,9 @@ pub fn humanize_number(
             return Err(HumanizeNumberError::FormatError(e));
         }
     }
+    let wanted_len = buf.len() - pre_len;
     buf.truncate(pre_len + len);
-    Ok(buf.len() - pre_len)
+    Ok(wanted_len)
 }
 
 #[cfg(test)]
@@ -349,7 +350,7 @@ mod tests {
             }
         }
 
-        let test_cases: [TestCase; 86] = [
+        let test_cases: [TestCase; 109] = [
             /* tests 0-13 test 1000 suffixes */
             TestCase::new_1000_auto(Ok(2), "0 ", 0, 4),
             TestCase::new_1000_auto(Ok(3), "1 k", 500, 4),
@@ -441,52 +442,52 @@ mod tests {
             TestCase::new_1024_scale(Ok(3), "2 P", 1536 * 1024 * 1024 * 1024 * 1024, 5, 4),
             TestCase::new_1024_scale(Ok(3), "0 E", 1536 * 1024 * 1024 * 1024 * 1024, 6, 4),
             TestCase::new_1024_scale(Ok(3), "2 E", 1536 * 1024 * 1024 * 1024 * 1024 * 1024, 6, 4),
-            // 	/* tests 86-99 test invalid specific scale values of < 0 or >= 7 with
-            // 	and without HN_DIVISOR_1000 set */
-            // 	/*  all should return errors with new code; with old, the latter 3
-            // 	are instead processed as if having AUTOSCALE and/or GETSCALE set */
-            // 	{ -1, "", (int64_t)1L, 0, 7, 4 },
-            // 	{ -1, "", (int64_t)1L, HN_DIVISOR_1000, 7, 4 },
-            // 	{ -1, "", (int64_t)1L, 0, 1000, 4 },
-            // 	{ -1, "", (int64_t)1L, HN_DIVISOR_1000, 1000, 4 },
-            // 	{ -1, "", (int64_t)0L, 0, 1000*1000, 4 },
-            // 	{ -1, "", (int64_t)0L, HN_DIVISOR_1000, 1000*1000, 4 },
-            // 	{ -1, "", (int64_t)0L, 0, INT_MAX, 4 },
-            // 	{ -1, "", (int64_t)0L, HN_DIVISOR_1000, INT_MAX, 4 },
+            /* tests 86-99 test invalid specific scale values of < 0 or >= 7 with
+               and without HN_DIVISOR_1000 set */
+            /*  all should return errors with new code; with old, the latter 3
+                are instead processed as if having AUTOSCALE and/or GETSCALE set */
+            TestCase::new_1024_scale(Err(HumanizeNumberError::TooBigScale), "", 1, 7, 4),
+            TestCase::new_1000_scale(Err(HumanizeNumberError::TooBigScale), "", 1, 7, 4),
+            TestCase::new_1024_scale(Err(HumanizeNumberError::TooBigScale), "", 1, 1000, 4),
+            TestCase::new_1000_scale(Err(HumanizeNumberError::TooBigScale), "", 1, 1000, 4),
+            TestCase::new_1024_scale(Err(HumanizeNumberError::TooBigScale), "", 1, 1000 * 1000, 4),
+            TestCase::new_1000_scale(Err(HumanizeNumberError::TooBigScale), "", 1, 1000 * 1000, 4),
+            TestCase::new_1024_scale(
+                Err(HumanizeNumberError::TooBigScale),
+                "",
+                1,
+                std::usize::MAX,
+                4,
+            ),
+            TestCase::new_1000_scale(
+                Err(HumanizeNumberError::TooBigScale),
+                "",
+                1,
+                std::usize::MAX,
+                4,
+            ),
+            // NOTE: No test cases for negative scale, since our scale type is usize.
 
-            // 	/* Negative scale values are not handled well
-            // 	 by the existing library routine - should report as error */
-            // 	/*  all should return errors with new code, fail assertion with old */
-
-            // 	{ -1, "", (int64_t)1L, 0, -1, 4 },
-            // 	{ -1, "", (int64_t)1L, HN_DIVISOR_1000, -1, 4 },
-            // 	{ -1, "", (int64_t)1L, 0, -1000, 4 },
-            // 	{ -1, "", (int64_t)1L, HN_DIVISOR_1000, -1000, 4 },
-
-            // 	/* __INT_MIN doesn't print properly, skipped. */
-
-            // 	{ -1, "", (int64_t)1L, 0, -__INT_MAX, 4 },
-            // 	{ -1, "", (int64_t)1L, HN_DIVISOR_1000, -__INT_MAX, 4 },
-
-            // 	/* tests for scale == 0, without autoscale */
-            // 	/* tests 100-114 test scale 0 with 1000 divisor - print first N digits */
-            // 	{ 2, "0 ", (int64_t)0L, HN_DIVISOR_1000, 0, 4 },
-            // 	{ 2, "1 ", (int64_t)1L, HN_DIVISOR_1000, 0, 4 },
-            // 	{ 3, "10 ", (int64_t)10L, HN_DIVISOR_1000, 0, 4 },
-            // 	{ 3, "0 M", (int64_t)150L, HN_DIVISOR_1000, HN_NOSPACE, 4 },
-            // 	{ 3, "0 M", (int64_t)500L, HN_DIVISOR_1000, HN_NOSPACE, 4 },
-            // 	{ 3, "0 M", (int64_t)999L, HN_DIVISOR_1000, HN_NOSPACE, 4 },
-            // 	{ 4, "150", (int64_t)150L, HN_DIVISOR_1000, 0, 4 },
-            // 	{ 4, "500", (int64_t)500L, HN_DIVISOR_1000, 0, 4 },
-            // 	{ 4, "999", (int64_t)999L, HN_DIVISOR_1000, 0, 4 },
-            // 	{ 5, "100", (int64_t)1000L, HN_DIVISOR_1000, 0, 4 },
-            // 	{ 5, "150", (int64_t)1500L, HN_DIVISOR_1000, 0, 4 },
-            // 	{ 7, "500", (int64_t)500*1000L, HN_DIVISOR_1000, 0, 4 },
-            // 	{ 8, "150", (int64_t)1500*1000L, HN_DIVISOR_1000, 0, 4 },
-            // 	{ 10, "500", (int64_t)500*1000*1000L, HN_DIVISOR_1000, 0, 4 },
-            // 	{ 11, "150", (int64_t)1500*1000*1000L, HN_DIVISOR_1000, 0, 4 },
-
-            // 	/* tests 115-126 test scale 0 with 1024 divisor - print first N digits */
+            /* tests for scale == 0, without autoscale */
+            /* tests 100-114 test scale 0 with 1000 divisor - print first N digits */
+            // NOTE: In our rust version N == len, compared to C where N == len - 1
+            // because of terminating '\0' character.
+            TestCase::new_1000_scale(Ok(2), "0 ", 0, 0, 4),
+            TestCase::new_1000_scale(Ok(2), "1 ", 1, 0, 4),
+            TestCase::new_1000_scale(Ok(3), "10 ", 10, 0, 4),
+            TestCase::new_1000_scale(Ok(3), "0 M", 150, 2, 4),
+            TestCase::new_1000_scale(Ok(3), "0 M", 500, 2, 4),
+            TestCase::new_1000_scale(Ok(3), "0 M", 999, 2, 4),
+            TestCase::new_1000_scale(Ok(4), "150 ", 150, 0, 4),
+            TestCase::new_1000_scale(Ok(4), "500 ", 500, 0, 4),
+            TestCase::new_1000_scale(Ok(4), "999 ", 999, 0, 4),
+            TestCase::new_1000_scale(Ok(5), "1000", 1000, 0, 4),
+            TestCase::new_1000_scale(Ok(5), "1500", 1500, 0, 4),
+            TestCase::new_1000_scale(Ok(7), "5000", 500_000, 0, 4),
+            TestCase::new_1000_scale(Ok(8), "1500", 1_500_000, 0, 4),
+            TestCase::new_1000_scale(Ok(10), "5000", 500_000_000, 0, 4),
+            TestCase::new_1000_scale(Ok(11), "1500", 1_500_000_000, 0, 4),
+            /* tests 115-126 test scale 0 with 1024 divisor - print first N digits */
             // 	{ 2, "0 ", (int64_t)0L, 0, 0, 4 },
             // 	{ 2, "1 ", (int64_t)1L, 0, 0, 4 },
             // 	{ 3, "10 ", (int64_t)10L, 0, 0, 4 },
