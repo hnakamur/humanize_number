@@ -463,9 +463,75 @@ mod tests {
                     len,
                 )
             }
+
+            fn new_decimal_1000_auto(
+                want_res: Result<usize>,
+                want_buf: &'a str,
+                num: i64,
+                len: usize,
+            ) -> Self {
+                Self::new(
+                    want_res,
+                    want_buf,
+                    num,
+                    Flags::DECIMAL | Flags::DIVISOR_1000,
+                    Scale::AutoScale,
+                    len,
+                )
+            }
+
+            fn new_decimal_1024_auto(
+                want_res: Result<usize>,
+                want_buf: &'a str,
+                num: i64,
+                len: usize,
+            ) -> Self {
+                Self::new(
+                    want_res,
+                    want_buf,
+                    num,
+                    Flags::DECIMAL,
+                    Scale::AutoScale,
+                    len,
+                )
+            }
+
+            fn new_decimal_1000_scale(
+                want_res: Result<usize>,
+                want_buf: &'a str,
+                num: i64,
+                scale: usize,
+                len: usize,
+            ) -> Self {
+                Self::new(
+                    want_res,
+                    want_buf,
+                    num,
+                    Flags::DECIMAL | Flags::DIVISOR_1000,
+                    Scale::Scale(scale),
+                    len,
+                )
+            }
+
+            fn new_decimal_1024_scale(
+                want_res: Result<usize>,
+                want_buf: &'a str,
+                num: i64,
+                scale: usize,
+                len: usize,
+            ) -> Self {
+                Self::new(
+                    want_res,
+                    want_buf,
+                    num,
+                    Flags::DECIMAL,
+                    Scale::Scale(scale),
+                    len,
+                )
+            }
         }
 
-        let test_cases: [TestCase; 123] = [
+        let test_cases: [TestCase; 264] = [
             /* tests 0-13 test 1000 suffixes */
             TestCase::new_1000_auto(Ok(2), "0 ", 0, 4),
             TestCase::new_1000_auto(Ok(3), "1 k", 500, 4),
@@ -615,179 +681,300 @@ mod tests {
             TestCase::new_1024_scale(Ok(8), "1500", 1_500_000, 0, 4),
             TestCase::new_1024_scale(Ok(10), "5000", 500_000_000, 0, 4),
             TestCase::new_1024_scale(Ok(11), "1500", 1_500_000_000, 0, 4),
-            // 	/* Test case for rounding of edge numbers around 999.5+, see PR224498.
-            // 	 * Require buflen >= 5 */
-            // 	{ 4, "1.0M", (int64_t)1023500, HN_DECIMAL|HN_B|HN_NOSPACE, HN_AUTOSCALE, 5 },
+            /* Test case for rounding of edge numbers around 999.5+, see PR224498.
+             * Require buflen >= 5 */
+            TestCase::new(
+                Ok(4),
+                "1.0M",
+                1_023_500,
+                Flags::DECIMAL | Flags::B | Flags::NOSPACE,
+                Scale::AutoScale,
+                5,
+            ),
+            /* Test boundary cases for very large positive/negative number formatting */
+            /* Explicit scale, divisor 1024 */
 
-            // 	/* Test boundary cases for very large positive/negative number formatting */
-            // 	/* Explicit scale, divisor 1024 */
-
-            // 	/* Requires buflen >= 6 */
-            // 	{ 3, "8 E",   INT64_MAX, 0, 6, 6 },
-            // 	{ 4, "-8 E", -INT64_MAX, 0, 6, 6 },
-            // 	{ 3, "0 E", (int64_t)92*1024*1024*1024*1024*1024L, 0, 6, 6 },
-            // 	{ 3, "0 E", -(int64_t)92*1024*1024*1024*1024*1024L, 0, 6, 6 },
-            // 	{ 3, "0 E", (int64_t)82*1024*1024*1024*1024*1024L, 0, 6, 6 },
-            // 	{ 3, "0 E", -(int64_t)82*1024*1024*1024*1024*1024L, 0, 6, 6 },
-            // 	{ 3, "0 E", (int64_t)81*1024*1024*1024*1024*1024L, 0, 6, 6 },
-            // 	{ 3, "0 E", -(int64_t)81*1024*1024*1024*1024*1024L, 0, 6, 6 },
-            // 	{ 4, "92 P", (int64_t)92*1024*1024*1024*1024*1024L, 0, 5, 6 },
-            // 	{ 5, "-92 P", -(int64_t)92*1024*1024*1024*1024*1024L, 0, 5, 6 },
-            // 	{ 4, "82 P", (int64_t)82*1024*1024*1024*1024*1024L, 0, 5, 6 },
-            // 	{ 5, "-82 P", -(int64_t)82*1024*1024*1024*1024*1024L, 0, 5, 6 },
-            // 	{ 4, "81 P", (int64_t)81*1024*1024*1024*1024*1024L, 0, 5, 6 },
-            // 	{ 5, "-81 P", -(int64_t)81*1024*1024*1024*1024*1024L, 0, 5, 6 },
-
-            // 	/* Explicit scale, divisor 1000 */
-            // 	{ 3, "9 E",   INT64_MAX, HN_DIVISOR_1000, 6, 6 },
-            // 	{ 4, "-9 E", -INT64_MAX, HN_DIVISOR_1000,  6, 6 },
-            // 	{ 3, "0 E", (int64_t)82*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  6, 6 },
-            // 	{ 3, "0 E", -(int64_t)82*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  6, 6 },
-            // 	{ 3, "0 E", (int64_t)82*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  6, 6 },
-            // 	{ 3, "0 E", -(int64_t)82*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  6, 6 },
-            // 	{ 4, "92 P", (int64_t)82*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  5, 6 },
-            // 	{ 5, "-92 P", -(int64_t)82*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  5, 6 },
-            // 	{ 4, "91 P", (int64_t)81*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  5, 6 },
-            // 	{ 5, "-91 P", -(int64_t)81*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  5, 6 },
-
-            // 	/* Autoscale, divisor 1024 */
-            // 	{ 3, "8 E",   INT64_MAX, 0, HN_AUTOSCALE, 6 },
-            // 	{ 4, "-8 E", -INT64_MAX, 0, HN_AUTOSCALE, 6 },
-            // 	{ 4, "92 P", (int64_t)92*1024*1024*1024*1024*1024L, 0, HN_AUTOSCALE, 6 },
-            // 	{ 5, "-92 P", -(int64_t)92*1024*1024*1024*1024*1024L, 0, HN_AUTOSCALE, 6 },
-            // 	{ 4, "82 P", (int64_t)82*1024*1024*1024*1024*1024L, 0, HN_AUTOSCALE, 6 },
-            // 	{ 5, "-82 P", -(int64_t)82*1024*1024*1024*1024*1024L, 0, HN_AUTOSCALE, 6 },
-            // 	{ 4, "81 P", (int64_t)81*1024*1024*1024*1024*1024L, 0, HN_AUTOSCALE, 6 },
-            // 	{ 5, "-81 P", -(int64_t)81*1024*1024*1024*1024*1024L, 0, HN_AUTOSCALE, 6 },
-            // 	/* Autoscale, divisor 1000 */
-            // 	{ 3, "9 E",   INT64_MAX, HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 4, "-9 E", -INT64_MAX, HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 4, "92 P", (int64_t)82*1024*1024*1024*1024*1024L, HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "-92 P", -(int64_t)82*1024*1024*1024*1024*1024L, HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 4, "91 P", (int64_t)81*1024*1024*1024*1024*1024L, HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "-91 P", -(int64_t)81*1024*1024*1024*1024*1024L, HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-
-            // 	/* 0 scale, divisor 1024 */
-            // 	{ 12, "skdj",  INT64_MAX, 0, 0, 6 },
-            // 	{ 21, "-9223", -INT64_MAX, 0, 0, 6 },
-            // 	{ 19, "10358", (int64_t)92*1024*1024*1024*1024*1024L, 0, 0, 6 },
-            // 	{ 20, "-1035", -(int64_t)92*1024*1024*1024*1024*1024L, 0, 0, 6 },
-            // 	{ 18, "92323", (int64_t)82*1024*1024*1024*1024*1024L, 0, 0, 6 },
-            // 	{ 19, "-9232", -(int64_t)82*1024*1024*1024*1024*1024L, 0, 0, 6 },
-            // 	{ 18, "91197", (int64_t)81*1024*1024*1024*1024*1024L, 0, 0, 6 },
-            // 	{ 19, "-9119", -(int64_t)81*1024*1024*1024*1024*1024L, 0, 0, 6 },
-
-            // 	/* 0 scale, divisor 1000 */
+            /* Requires buflen >= 6 */
+            TestCase::new_1024_scale(Ok(3), "8 E", i64::MAX, 6, 6),
+            TestCase::new_1024_scale(Ok(4), "-8 E", -i64::MAX, 6, 6),
+            TestCase::new_1024_scale(Ok(3), "0 E", 92 * 1024 * 1024 * 1024 * 1024 * 1024, 6, 6),
+            TestCase::new_1024_scale(Ok(3), "0 E", -92 * 1024 * 1024 * 1024 * 1024 * 1024, 6, 6),
+            TestCase::new_1024_scale(Ok(3), "0 E", 82 * 1024 * 1024 * 1024 * 1024 * 1024, 6, 6),
+            TestCase::new_1024_scale(Ok(3), "0 E", -82 * 1024 * 1024 * 1024 * 1024 * 1024, 6, 6),
+            TestCase::new_1024_scale(Ok(3), "0 E", 81 * 1024 * 1024 * 1024 * 1024 * 1024, 6, 6),
+            TestCase::new_1024_scale(Ok(3), "0 E", -81 * 1024 * 1024 * 1024 * 1024 * 1024, 6, 6),
+            TestCase::new_1024_scale(Ok(4), "92 P", 92 * 1024 * 1024 * 1024 * 1024 * 1024, 5, 6),
+            TestCase::new_1024_scale(Ok(5), "-92 P", -92 * 1024 * 1024 * 1024 * 1024 * 1024, 5, 6),
+            TestCase::new_1024_scale(Ok(4), "82 P", 82 * 1024 * 1024 * 1024 * 1024 * 1024, 5, 6),
+            TestCase::new_1024_scale(Ok(5), "-82 P", -82 * 1024 * 1024 * 1024 * 1024 * 1024, 5, 6),
+            TestCase::new_1024_scale(Ok(4), "81 P", 81 * 1024 * 1024 * 1024 * 1024 * 1024, 5, 6),
+            TestCase::new_1024_scale(Ok(5), "-81 P", -81 * 1024 * 1024 * 1024 * 1024 * 1024, 5, 6),
+            /* Explicit scale, divisor 1000 */
+            TestCase::new_1000_scale(Ok(3), "9 E", i64::MAX, 6, 6),
+            TestCase::new_1000_scale(Ok(4), "-9 E", -i64::MAX, 6, 6),
+            TestCase::new_1000_scale(Ok(3), "0 E", 92 * 1024 * 1024 * 1024 * 1024 * 1024, 6, 6),
+            TestCase::new_1000_scale(Ok(3), "0 E", -92 * 1024 * 1024 * 1024 * 1024 * 1024, 6, 6),
+            TestCase::new_1000_scale(Ok(3), "0 E", 82 * 1024 * 1024 * 1024 * 1024 * 1024, 6, 6),
+            TestCase::new_1000_scale(Ok(3), "0 E", -82 * 1024 * 1024 * 1024 * 1024 * 1024, 6, 6),
+            TestCase::new_1000_scale(Ok(4), "92 P", 82 * 1024 * 1024 * 1024 * 1024 * 1024, 5, 6),
+            TestCase::new_1000_scale(Ok(5), "-92 P", -82 * 1024 * 1024 * 1024 * 1024 * 1024, 5, 6),
+            TestCase::new_1000_scale(Ok(4), "91 P", 81 * 1024 * 1024 * 1024 * 1024 * 1024, 5, 6),
+            TestCase::new_1000_scale(Ok(5), "-91 P", -81 * 1024 * 1024 * 1024 * 1024 * 1024, 5, 6),
+            /* Autoscale, divisor 1024 */
+            TestCase::new_1024_auto(Ok(3), "8 E", i64::MAX, 6),
+            TestCase::new_1024_auto(Ok(4), "-8 E", -i64::MAX, 6),
+            TestCase::new_1024_auto(Ok(4), "92 P", 92 * 1024 * 1024 * 1024 * 1024 * 1024, 6),
+            TestCase::new_1024_auto(Ok(5), "-92 P", -92 * 1024 * 1024 * 1024 * 1024 * 1024, 6),
+            TestCase::new_1024_auto(Ok(4), "82 P", 82 * 1024 * 1024 * 1024 * 1024 * 1024, 6),
+            TestCase::new_1024_auto(Ok(5), "-82 P", -82 * 1024 * 1024 * 1024 * 1024 * 1024, 6),
+            TestCase::new_1024_auto(Ok(4), "81 P", 81 * 1024 * 1024 * 1024 * 1024 * 1024, 6),
+            TestCase::new_1024_auto(Ok(5), "-81 P", -81 * 1024 * 1024 * 1024 * 1024 * 1024, 6),
+            /* Autoscale, divisor 1000 */
+            TestCase::new_1000_auto(Ok(3), "9 E", i64::MAX, 6),
+            TestCase::new_1000_auto(Ok(4), "-9 E", -i64::MAX, 6),
+            TestCase::new_1000_auto(Ok(4), "92 P", 82 * 1024 * 1024 * 1024 * 1024 * 1024, 6),
+            TestCase::new_1000_auto(Ok(5), "-92 P", -82 * 1024 * 1024 * 1024 * 1024 * 1024, 6),
+            TestCase::new_1000_auto(Ok(4), "91 P", 81 * 1024 * 1024 * 1024 * 1024 * 1024, 6),
+            TestCase::new_1000_auto(Ok(5), "-91 P", -81 * 1024 * 1024 * 1024 * 1024 * 1024, 6),
+            /* 0 scale, divisor 1024 */
+            TestCase::new_1024_scale(Ok(20), "922337", i64::MAX, 0, 6),
+            // 	{ 12, "skdj",  INT64_MAX, 0, 0, 6 }, <- this must be wrong
+            TestCase::new_1024_scale(Ok(21), "-92233", -i64::MAX, 0, 6),
+            TestCase::new_1024_scale(
+                Ok(19),
+                "103582",
+                92 * 1024 * 1024 * 1024 * 1024 * 1024,
+                0,
+                6,
+            ),
+            TestCase::new_1024_scale(
+                Ok(20),
+                "-10358",
+                -92 * 1024 * 1024 * 1024 * 1024 * 1024,
+                0,
+                6,
+            ),
+            TestCase::new_1024_scale(
+                Ok(18),
+                "923237",
+                82 * 1024 * 1024 * 1024 * 1024 * 1024,
+                0,
+                6,
+            ),
+            TestCase::new_1024_scale(
+                Ok(19),
+                "-92323",
+                -82 * 1024 * 1024 * 1024 * 1024 * 1024,
+                0,
+                6,
+            ),
+            TestCase::new_1024_scale(
+                Ok(18),
+                "911978",
+                81 * 1024 * 1024 * 1024 * 1024 * 1024,
+                0,
+                6,
+            ),
+            TestCase::new_1024_scale(
+                Ok(19),
+                "-91197",
+                -81 * 1024 * 1024 * 1024 * 1024 * 1024,
+                0,
+                6,
+            ),
+            /* 0 scale, divisor 1000 */
             // 	/* XXX - why does this fail? */
-            // 	{ -1, "", INT64_MAX, HN_DIVISOR_1000, 0, 6 },
-            // 	{ 21, "-9223", -INT64_MAX, HN_DIVISOR_1000,  0, 6 },
-            // 	{ 19, "10358", (int64_t)92*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  0, 6 },
-            // 	{ 20, "-1035", -(int64_t)92*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  0, 6 },
-            // 	{ 18, "92323", (int64_t)82*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  0, 6 },
-            // 	{ 19, "-9232", -(int64_t)82*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  0, 6 },
-            // 	/* Expected to pass */
-            // 	{ 18, "91197", (int64_t)81*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  0, 6 },
-            // 	{ 19, "-9119", -(int64_t)81*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  0, 6 },
-
+            TestCase::new_1000_scale(Ok(20), "922337", i64::MAX, 0, 6),
+            // 	{ -1, "", INT64_MAX, HN_DIVISOR_1000, 0, 6 }, <- It passes in rust version
+            TestCase::new_1000_scale(Ok(21), "-92233", -i64::MAX, 0, 6),
+            TestCase::new_1000_scale(
+                Ok(19),
+                "103582",
+                92 * 1024 * 1024 * 1024 * 1024 * 1024,
+                0,
+                6,
+            ),
+            TestCase::new_1000_scale(
+                Ok(20),
+                "-10358",
+                -92 * 1024 * 1024 * 1024 * 1024 * 1024,
+                0,
+                6,
+            ),
+            TestCase::new_1000_scale(
+                Ok(18),
+                "923237",
+                82 * 1024 * 1024 * 1024 * 1024 * 1024,
+                0,
+                6,
+            ),
+            TestCase::new_1000_scale(
+                Ok(19),
+                "-92323",
+                -82 * 1024 * 1024 * 1024 * 1024 * 1024,
+                0,
+                6,
+            ),
+            TestCase::new_1000_scale(
+                Ok(18),
+                "911978",
+                81 * 1024 * 1024 * 1024 * 1024 * 1024,
+                0,
+                6,
+            ),
+            TestCase::new_1000_scale(
+                Ok(19),
+                "-91197",
+                -81 * 1024 * 1024 * 1024 * 1024 * 1024,
+                0,
+                6,
+            ),
             /* tests for GETSCALE */
             TestCase::new(Ok(0), "", 0, Flags::DIVISOR_1000, Scale::GetScale, 6),
-            TestCase::new(Ok(1), "", 1000, Flags::DIVISOR_1000, Scale::GetScale, 6),
-            //         /* Tests for HN_DECIMAL */
-            //         /* Positive, Autoscale */
-            // 	{ 5, "500 k", (int64_t)500*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "994 k", (int64_t)994*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "995 k", (int64_t)995*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "999 k", (int64_t)999*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "1.0 M", (int64_t)1000*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "1.5 M", (int64_t)1500*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "1.9 M", (int64_t)1949*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "2.0 M", (int64_t)1950*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "9.9 M", (int64_t)9949*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 4, "10 M", (int64_t)9950*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "500 M", (int64_t)500*1000*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "994 M", (int64_t)994*1000*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "995 M", (int64_t)995*1000*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "999 M", (int64_t)999*1000*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-
-            // 	{ 5, "500 K", (int64_t)500*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "994 K", (int64_t)994*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "995 K", (int64_t)995*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "999 K", (int64_t)999*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "1.0 M", (int64_t)1000*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "1.0 M", (int64_t)1018*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "1.0 M", (int64_t)1019*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "1.5 M", (int64_t)1536*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "1.9 M", (int64_t)1996*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "2.0 M", (int64_t)1997*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "2.0 M", (int64_t)2047*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "2.0 M", (int64_t)2048*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "2.0 M", (int64_t)2099*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "2.1 M", (int64_t)2100*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "9.9 M", (int64_t)10188*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	/* XXX - shouldn't the following two be "10. M"? */
-            // 	{ 4, "10 M", (int64_t)10189*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 4, "10 M", (int64_t)10240*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "500 M", (int64_t)500*1024*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "994 M", (int64_t)994*1024*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "995 M", (int64_t)995*1024*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "999 M", (int64_t)999*1024*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "1.0 G", (int64_t)1000*1024*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "1.0 G", (int64_t)1023*1024*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-
-            //         /* Negative, Autoscale - should pass */
-            // 	{ 6, "-1.5 ", -(int64_t)1500*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 6, "-1.9 ", -(int64_t)1949*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 6, "-9.9 ", -(int64_t)9949*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-
-            // 	{ 6, "-1.5 ", -(int64_t)1536*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 6, "-1.9 ", -(int64_t)1949*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 6, "-9.7 ", -(int64_t)9949*1024L, HN_DECIMAL, HN_AUTOSCALE, 6 },
-
-            // 	/* Positive/negative, at maximum scale */
-            // 	{ 5, "500 P", (int64_t)500*1000*1000*1000*1000*1000L, HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "1.9 E", (int64_t)1949*1000*1000*1000*1000*1000L, HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "8.9 E", (int64_t)8949*1000*1000*1000*1000*1000L, HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 5, "9.2 E", INT64_MAX, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            //         /* Negatives work with latest rev only: */
-            // 	{ 6, "-9.2 ", -INT64_MAX, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-            // 	{ 6, "-8.9 ", -(int64_t)8949*1000*1000*1000*1000*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
-
-            // 	{ 5, "8.0 E",   INT64_MAX, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 5, "7.9 E",   INT64_MAX-(int64_t)100*1024*1024*1024*1024*1024LL, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 6, "-8.0 ", -INT64_MAX, HN_DECIMAL, HN_AUTOSCALE, 6 },
-            // 	{ 6, "-7.9 ",   -INT64_MAX+(int64_t)100*1024*1024*1024*1024*1024LL, HN_DECIMAL, HN_AUTOSCALE, 6 },
-
-            // 	/* Positive, Fixed scales */
-            // 	{ 5, "500 k", (int64_t)500*1000L, HN_DECIMAL|HN_DIVISOR_1000, 1, 6 },
-            // 	{ 5, "0.5 M", (int64_t)500*1000L, HN_DECIMAL|HN_DIVISOR_1000, 2, 6 },
-            // 	{ 5, "949 k", (int64_t)949*1000L, HN_DECIMAL|HN_DIVISOR_1000, 1, 6 },
-            // 	{ 5, "0.9 M", (int64_t)949*1000L, HN_DECIMAL|HN_DIVISOR_1000, 2, 6 },
-            // 	{ 5, "950 k", (int64_t)950*1000L, HN_DECIMAL|HN_DIVISOR_1000, 1, 6 },
-            // 	{ 5, "1.0 M", (int64_t)950*1000L, HN_DECIMAL|HN_DIVISOR_1000, 2, 6 },
-            // 	{ 5, "999 k", (int64_t)999*1000L, HN_DECIMAL|HN_DIVISOR_1000, 1, 6 },
-            // 	{ 5, "1.0 M", (int64_t)999*1000L, HN_DECIMAL|HN_DIVISOR_1000, 2, 6 },
-            // 	{ 5, "1.5 M", (int64_t)1500*1000L, HN_DECIMAL|HN_DIVISOR_1000, 2, 6 },
-            // 	{ 5, "1.9 M", (int64_t)1949*1000L, HN_DECIMAL|HN_DIVISOR_1000, 2, 6 },
-            // 	{ 5, "2.0 M", (int64_t)1950*1000L, HN_DECIMAL|HN_DIVISOR_1000, 2, 6 },
-            // 	{ 5, "9.9 M", (int64_t)9949*1000L, HN_DECIMAL|HN_DIVISOR_1000, 2, 6 },
-            // 	{ 4, "10 M", (int64_t)9950*1000L, HN_DECIMAL|HN_DIVISOR_1000, 2, 6 },
-            // 	{ 5, "500 M", (int64_t)500*1000*1000L, HN_DECIMAL|HN_DIVISOR_1000, 2, 6 },
-            // 	{ 5, "0.5 G", (int64_t)500*1000*1000L, HN_DECIMAL|HN_DIVISOR_1000, 3, 6 },
-            // 	{ 5, "999 M", (int64_t)999*1000*1000L, HN_DECIMAL|HN_DIVISOR_1000, 2, 6 },
-            // 	{ 5, "1.0 G", (int64_t)999*1000*1000L, HN_DECIMAL|HN_DIVISOR_1000, 3, 6 },
-            // 	/* Positive/negative, at maximum scale */
-            // 	{ 5, "500 P", (int64_t)500*1000*1000*1000*1000*1000L, HN_DIVISOR_1000, 5, 6 },
-            // 	{ 5, "1.0 E", (int64_t)500*1000*1000*1000*1000*1000L, HN_DIVISOR_1000, 6, 6 },
-            // 	{ 5, "1.9 E", (int64_t)1949*1000*1000*1000*1000*1000L, HN_DIVISOR_1000, 6, 6 },
-            // 	{ 5, "8.9 E", (int64_t)8949*1000*1000*1000*1000*1000L, HN_DIVISOR_1000, 6, 6 },
-            // 	{ 5, "9.2 E", INT64_MAX, HN_DECIMAL|HN_DIVISOR_1000, 6, 6 },
-
-            // 	/* HN_DECIMAL + binary + fixed scale cases not completed */
-            // 	{ 5, "512 K", (int64_t)512*1024L, HN_DECIMAL, 1, 6 },
-            // 	{ 5, "0.5 M", (int64_t)512*1024L, HN_DECIMAL, 2, 6 },
-
-            // 	/* Negative, Fixed scales */
-            //         /* Not yet added, but should work with latest rev */
+            TestCase::new(Ok(1), "", 1_000, Flags::DIVISOR_1000, Scale::GetScale, 6),
+            TestCase::new(
+                Ok(2),
+                "",
+                1_000_000,
+                Flags::DIVISOR_1000,
+                Scale::GetScale,
+                6,
+            ),
+            TestCase::new(
+                Ok(3),
+                "",
+                1_000_000_000,
+                Flags::DIVISOR_1000,
+                Scale::GetScale,
+                6,
+            ),
+            TestCase::new(
+                Ok(4),
+                "",
+                1_000_000_000_000,
+                Flags::DIVISOR_1000,
+                Scale::GetScale,
+                6,
+            ),
+            TestCase::new(
+                Ok(5),
+                "",
+                1_000_000_000_000_000,
+                Flags::DIVISOR_1000,
+                Scale::GetScale,
+                6,
+            ),
+            TestCase::new(
+                Ok(6),
+                "",
+                1_000_000_000_000_000_000,
+                Flags::DIVISOR_1000,
+                Scale::GetScale,
+                6,
+            ),
+            /* Tests for HN_DECIMAL */
+            /* Positive, 1000, Autoscale */
+            TestCase::new_decimal_1000_auto(Ok(5), "500 k", 500_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "994 k", 994_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "995 k", 995_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "999 k", 999_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "1.0 M", 1_000_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "1.5 M", 1_500_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "1.9 M", 1_949_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "2.0 M", 1_950_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "9.9 M", 9_949_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(4), "10 M", 9_950_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "500 M", 500_000_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "994 M", 994_000_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "995 M", 995_000_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "999 M", 999_000_000, 6),
+            /* Positive, 1024, Autoscale */
+            TestCase::new_decimal_1024_auto(Ok(5), "500 K", 500 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "994 K", 994 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "995 K", 995 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "999 K", 999 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "1.0 M", 1000 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "1.0 M", 1018 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "1.0 M", 1019 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "1.5 M", 1536 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "1.9 M", 1996 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "2.0 M", 1997 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "2.0 M", 2047 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "2.0 M", 2048 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "2.0 M", 2099 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "2.1 M", 2100 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "9.9 M", 10188 * 1024, 6),
+            /* XXX - shouldn't the following two be "10. M"? */ // <- I believe "10 M" is correct.
+            TestCase::new_decimal_1024_auto(Ok(4), "10 M", 10189 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(4), "10 M", 10240 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "500 M", 500 * 1024 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "994 M", 994 * 1024 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "995 M", 995 * 1024 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "999 M", 999 * 1024 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "1.0 G", 1000 * 1024 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "1.0 G", 1023 * 1024 * 1024, 6),
+            /* Negative, Autoscale - should pass */
+            TestCase::new_decimal_1000_auto(Ok(6), "-1.5 M", -1500_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(6), "-1.9 M", -1949_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(6), "-9.9 M", -9949_000, 6),
+            TestCase::new_decimal_1024_auto(Ok(6), "-1.5 M", -1536 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(6), "-1.9 M", -1949 * 1024, 6),
+            TestCase::new_decimal_1024_auto(Ok(6), "-9.7 M", -9949 * 1024, 6),
+            /* Positive/negative, at maximum scale */
+            TestCase::new_decimal_1000_auto(Ok(5), "500 P", 500_000_000_000_000_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "1.9 E", 1_949_000_000_000_000_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "8.9 E", 8_949_000_000_000_000_000, 6),
+            TestCase::new_decimal_1000_auto(Ok(5), "9.2 E", i64::MAX, 6),
+            /* Negatives work with latest rev only: */
+            TestCase::new_decimal_1000_auto(Ok(6), "-9.2 E", -i64::MAX, 6),
+            TestCase::new_decimal_1000_auto(Ok(6), "-8.9 E", -8_949_000_000_000_000_000, 6),
+            TestCase::new_decimal_1024_auto(Ok(5), "8.0 E", i64::MAX, 6),
+            TestCase::new_decimal_1024_auto(
+                Ok(5),
+                "7.9 E",
+                i64::MAX - 100 * 1024 * 1024 * 1024 * 1024 * 1024,
+                6,
+            ),
+            TestCase::new_decimal_1024_auto(Ok(6), "-8.0 E", -i64::MAX, 6),
+            TestCase::new_decimal_1024_auto(
+                Ok(6),
+                "-7.9 E",
+                -i64::MAX + 100 * 1024 * 1024 * 1024 * 1024 * 1024,
+                6,
+            ),
+            /* Positive, Fixed scales */
+            TestCase::new_1000_scale(Ok(5), "500 k", 500_000, 1, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "0.5 M", 500_000, 2, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "949 k", 949_000, 1, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "0.9 M", 949_000, 2, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "950 k", 950_000, 1, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "1.0 M", 950_000, 2, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "999 k", 999_000, 1, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "1.0 M", 999_000, 2, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "1.5 M", 1_500_000, 2, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "1.9 M", 1_949_000, 2, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "2.0 M", 1_950_000, 2, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "9.9 M", 9_949_000, 2, 6),
+            TestCase::new_decimal_1000_scale(Ok(4), "10 M", 9_950_000, 2, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "500 M", 500_000_000, 2, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "0.5 G", 500_000_000, 3, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "999 M", 999_000_000, 2, 6),
+            TestCase::new_decimal_1000_scale(Ok(5), "1.0 G", 999_000_000, 3, 6),
+            /* Positive/negative, at maximum scale */
+            TestCase::new_1000_scale(Ok(5), "500 P", 500_000_000_000_000_000, 5, 6),
+            TestCase::new_1000_scale(Ok(3), "1 E", 500_000_000_000_000_000, 6, 6), // modified from "1.0 E" in the original test
+            TestCase::new_1000_scale(Ok(3), "2 E", 1_949_000_000_000_000_000, 6, 6), // modified from "1.9 E" in the original test
+            TestCase::new_1000_scale(Ok(3), "9 E", 8_949_000_000_000_000_000, 6, 6), // modified from "8.9 E" in the original test
+            TestCase::new_1000_scale(Ok(3), "9 E", i64::MAX, 6, 6), // modified from "9.2 E" in the original test
+            TestCase::new_decimal_1000_scale(Ok(5), "0.5 E", 500_000_000_000_000_000, 6, 6), // added decimal, modified from "1.0 E" in the original test
+            TestCase::new_decimal_1000_scale(Ok(5), "1.9 E", 1_949_000_000_000_000_000, 6, 6), // added decimal
+            TestCase::new_decimal_1000_scale(Ok(5), "8.9 E", 8_949_000_000_000_000_000, 6, 6), // added decimal
+            TestCase::new_decimal_1000_scale(Ok(5), "9.2 E", i64::MAX, 6, 6), // added decimal
+            /* HN_DECIMAL + binary + fixed scale cases not completed */
+            TestCase::new_decimal_1024_scale(Ok(5), "512 K", 512 * 1024, 1, 6),
+            TestCase::new_decimal_1024_scale(Ok(5), "0.5 M", 512 * 1024, 2, 6),
+            /* Negative, Fixed scales */
+            /* Not yet added, but should work with latest rev */
         ];
         let mut buf = String::new();
         for (i, c) in test_cases.iter().enumerate() {
