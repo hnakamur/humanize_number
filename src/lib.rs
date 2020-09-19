@@ -39,10 +39,11 @@ use thiserror::Error;
 
 const MAX_SCALE: usize = 6;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Scale {
     Scale(usize),
     AutoScale,
+    GetScale,
 }
 
 bitflags! {
@@ -67,7 +68,7 @@ pub enum HumanizeNumberError {
     #[error("too small length")]
     TooSmallLength,
     #[error("format error")]
-    FormatError(std::fmt::Error),
+    FormatError(fmt::Error),
 }
 
 const PREFIXES_IEC_B: [&str; 7] = ["B", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei"];
@@ -78,7 +79,7 @@ const PREFIXES_1024_B: [&str; 7] = ["B", "K", "M", "G", "T", "P", "E"];
 const PREFIXES_1024: [&str; 7] = ["", "K", "M", "G", "T", "P", "E"];
 
 pub fn humanize_number(
-    buf: &mut String,
+    w: &mut dyn fmt::Write,
     len: usize,
     mut quotient: i64,
     suffix: &str,
@@ -156,6 +157,11 @@ pub fn humanize_number(
     }
     baselen += suffix.len();
 
+    /* Check if enough room for `x y' + suffix */
+    if len < baselen {
+        return Err(HumanizeNumberError::TooSmallLength);
+    }
+
     let mut i: usize;
     match scale {
         Scale::Scale(scale) => {
@@ -192,10 +198,14 @@ pub fn humanize_number(
                 quotient /= divisor;
                 i += 1;
             }
+
+            match scale {
+                Scale::GetScale => return Ok(i),
+                _ => (),
+            }
         }
     }
 
-    let pre_len = buf.len();
     /* If a value <= 9.9 after rounding and ... */
     /*
      * XXX - should we make sure there is enough space for the decimal
@@ -209,7 +219,7 @@ pub fn humanize_number(
         let s2 = ((remainder * 10 + divisor / 2) / divisor) % 10;
         const DECIMAL_POINT: &str = ".";
         if let Err(e) = write!(
-            buf,
+            w,
             "{}{}{}{}{}{}",
             sign * s1,
             DECIMAL_POINT,
@@ -222,7 +232,7 @@ pub fn humanize_number(
         }
     } else {
         if let Err(e) = write!(
-            buf,
+            w,
             "{}{}{}{}",
             sign * (quotient + (remainder + divisor / 2) / divisor),
             sep,
@@ -232,9 +242,60 @@ pub fn humanize_number(
             return Err(HumanizeNumberError::FormatError(e));
         }
     }
-    let formatted_len = buf.len() - pre_len;
-    // buf.truncate(pre_len + len);
-    Ok(formatted_len)
+    Ok(i)
+}
+
+pub struct DiscardWriter {
+    n: usize,
+}
+
+impl DiscardWriter {
+    pub fn new() -> Self {
+        Self { n: 0 }
+    }
+
+    pub fn num_bytes_would_written(&self) -> usize {
+        self.n
+    }
+}
+
+impl Write for DiscardWriter {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.n += s.len();
+        Ok(())
+    }
+}
+
+pub struct LimitedWriter<'a, T: ?Sized + 'a> {
+    inner: &'a mut T,
+    limit: usize,
+    n: usize,
+}
+
+impl<'a, T> LimitedWriter<'a, T> {
+    pub fn new(inner: &'a mut T, limit: usize) -> Self {
+        Self { inner, limit, n: 0 }
+    }
+
+    pub fn num_bytes_would_written(&self) -> usize {
+        self.n
+    }
+}
+
+impl<T: Write + ?Sized> fmt::Write for LimitedWriter<'_, T> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let mut i = 0usize;
+        while i < s.len() {
+            let len = len_utf8_at(&s, i);
+            if self.n + i + len > self.limit {
+                break;
+            }
+            i += len;
+        }
+        self.inner.write_str(&s[0..i])?;
+        self.n += s.len();
+        Ok(())
+    }
 }
 
 fn len_utf8_at(s: &str, i: usize) -> usize {
@@ -249,59 +310,6 @@ fn len_utf8_at(s: &str, i: usize) -> usize {
         4
     } else {
         panic!("index not at char boundary: {}", i);
-    }
-}
-
-struct DiscardWriter {
-    n: usize,
-}
-
-impl DiscardWriter {
-    fn new() -> Self {
-        Self { n: 0 }
-    }
-
-    fn num_bytes_supposed_written(&self) -> usize {
-        self.n
-    }
-}
-
-impl Write for DiscardWriter {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.n += s.len();
-        Ok(())
-    }
-}
-
-struct LimitedWriter<'a, T: ?Sized + 'a> {
-    inner: &'a mut T,
-    limit: usize,
-    n: usize,
-}
-
-impl<'a, T> LimitedWriter<'a, T> {
-    fn new(inner: &'a mut T, limit: usize) -> Self {
-        Self { inner, limit, n: 0 }
-    }
-
-    fn num_bytes_supposed_written(&self) -> usize {
-        self.n
-    }
-}
-
-impl<T: Write + ?Sized> fmt::Write for LimitedWriter<'_, T> {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        let mut i = 0usize;
-        while i < s.len() {
-            let len = len_utf8_at(&s, i);
-            if i + len > self.limit {
-                break;
-            }
-            i += len;
-        }
-        self.inner.write_str(&s[0..i])?;
-        self.n += s.len();
-        Ok(())
     }
 }
 
@@ -322,7 +330,7 @@ mod tests {
     fn test_discard_writer() {
         let mut w = DiscardWriter::new();
         write!(&mut w, "\u{0024}\u{00A2}\u{20AC}\u{10348}").unwrap();
-        assert_eq!(w.num_bytes_supposed_written(), 10);
+        assert_eq!(w.num_bytes_would_written(), 10);
     }
 
     #[test]
@@ -330,20 +338,26 @@ mod tests {
         let mut buf = String::new();
         let mut w = LimitedWriter::new(&mut buf, 4);
         write!(&mut w, "\u{0024}\u{00A2}\u{20AC}\u{10348}").unwrap();
-        assert_eq!(w.num_bytes_supposed_written(), 10);
+        assert_eq!(w.num_bytes_would_written(), 10);
         assert_eq!(buf, "\u{0024}\u{00A2}");
 
         buf.clear();
         let mut w = LimitedWriter::new(&mut buf, 3);
         write!(&mut w, "\u{0024}\u{00A2}\u{20AC}\u{10348}").unwrap();
-        assert_eq!(w.num_bytes_supposed_written(), 10);
+        assert_eq!(w.num_bytes_would_written(), 10);
         assert_eq!(buf, "\u{0024}\u{00A2}");
 
         buf.clear();
         let mut w = LimitedWriter::new(&mut buf, 6);
         write!(&mut w, "\u{0024}\u{00A2}\u{20AC}\u{10348}").unwrap();
-        assert_eq!(w.num_bytes_supposed_written(), 10);
+        assert_eq!(w.num_bytes_would_written(), 10);
         assert_eq!(buf, "\u{0024}\u{00A2}\u{20AC}");
+
+        buf.clear();
+        let mut w = LimitedWriter::new(&mut buf, 4);
+        write!(&mut w, "1000 ").unwrap();
+        assert_eq!(w.num_bytes_would_written(), 5);
+        assert_eq!(buf, "1000");
     }
 
     #[test]
@@ -451,7 +465,7 @@ mod tests {
             }
         }
 
-        let test_cases: [TestCase; 109] = [
+        let test_cases: [TestCase; 123] = [
             /* tests 0-13 test 1000 suffixes */
             TestCase::new_1000_auto(Ok(2), "0 ", 0, 4),
             TestCase::new_1000_auto(Ok(3), "1 k", 500, 4),
@@ -589,19 +603,18 @@ mod tests {
             TestCase::new_1000_scale(Ok(10), "5000", 500_000_000, 0, 4),
             TestCase::new_1000_scale(Ok(11), "1500", 1_500_000_000, 0, 4),
             /* tests 115-126 test scale 0 with 1024 divisor - print first N digits */
-            // 	{ 2, "0 ", (int64_t)0L, 0, 0, 4 },
-            // 	{ 2, "1 ", (int64_t)1L, 0, 0, 4 },
-            // 	{ 3, "10 ", (int64_t)10L, 0, 0, 4 },
-            // 	{ 4, "150", (int64_t)150L, 0, 0, 4 },
-            // 	{ 4, "500", (int64_t)500L, 0, 0, 4 },
-            // 	{ 4, "999", (int64_t)999L, 0, 0, 4 },
-            // 	{ 5, "100", (int64_t)1000L, 0, 0, 4 },
-            // 	{ 5, "150", (int64_t)1500L, 0, 0, 4 },
-            // 	{ 7, "500", (int64_t)500*1000L, 0, 0, 4 },
-            // 	{ 8, "150", (int64_t)1500*1000L, 0, 0, 4 },
-            // 	{ 10, "500", (int64_t)500*1000*1000L, 0, 0, 4 },
-            // 	{ 11, "150", (int64_t)1500*1000*1000L, 0, 0, 4 },
-
+            TestCase::new_1024_scale(Ok(2), "0 ", 0, 0, 4),
+            TestCase::new_1024_scale(Ok(2), "1 ", 1, 0, 4),
+            TestCase::new_1024_scale(Ok(3), "10 ", 10, 0, 4),
+            TestCase::new_1024_scale(Ok(4), "150 ", 150, 0, 4),
+            TestCase::new_1024_scale(Ok(4), "500 ", 500, 0, 4),
+            TestCase::new_1024_scale(Ok(4), "999 ", 999, 0, 4),
+            TestCase::new_1024_scale(Ok(5), "1000", 1000, 0, 4),
+            TestCase::new_1024_scale(Ok(5), "1500", 1500, 0, 4),
+            TestCase::new_1024_scale(Ok(7), "5000", 500_000, 0, 4),
+            TestCase::new_1024_scale(Ok(8), "1500", 1_500_000, 0, 4),
+            TestCase::new_1024_scale(Ok(10), "5000", 500_000_000, 0, 4),
+            TestCase::new_1024_scale(Ok(11), "1500", 1_500_000_000, 0, 4),
             // 	/* Test case for rounding of edge numbers around 999.5+, see PR224498.
             // 	 * Require buflen >= 5 */
             // 	{ 4, "1.0M", (int64_t)1023500, HN_DECIMAL|HN_B|HN_NOSPACE, HN_AUTOSCALE, 5 },
@@ -676,10 +689,9 @@ mod tests {
             // 	{ 18, "91197", (int64_t)81*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  0, 6 },
             // 	{ 19, "-9119", -(int64_t)81*1024*1024*1024*1024*1024L, HN_DIVISOR_1000,  0, 6 },
 
-            // 	/* Need to implement tests for GETSCALE */
-            // /*	{ ?, "", (int64_t)0L, HN_DIVISOR_1000, HN_GETSCALE, 6 },
-            // 	...
-            // */
+            /* tests for GETSCALE */
+            TestCase::new(Ok(0), "", 0, Flags::DIVISOR_1000, Scale::GetScale, 6),
+            TestCase::new(Ok(1), "", 1000, Flags::DIVISOR_1000, Scale::GetScale, 6),
             //         /* Tests for HN_DECIMAL */
             //         /* Positive, Autoscale */
             // 	{ 5, "500 k", (int64_t)500*1000L, HN_DECIMAL|HN_DIVISOR_1000, HN_AUTOSCALE, 6 },
@@ -778,38 +790,57 @@ mod tests {
             //         /* Not yet added, but should work with latest rev */
         ];
         let mut buf = String::new();
-        for c in &test_cases {
-            let res = humanize_number(&mut buf, c.len, c.num, "", c.scale, c.flags);
-            assert_eq!(buf, c.want_buf, "test_case={:?}", c);
-            assert_eq!(res, c.want_res, "test_case={:?}", c);
+        for (i, c) in test_cases.iter().enumerate() {
+            let mut w = LimitedWriter::new(&mut buf, c.len);
+            let res = humanize_number(&mut w, c.len, c.num, "", c.scale, c.flags);
+            match res {
+                Ok(n) => match c.scale {
+                    Scale::GetScale => assert_eq!(
+                        n,
+                        *c.want_res.as_ref().unwrap(),
+                        "case_index={}, test_case={:?}",
+                        i,
+                        c
+                    ),
+                    _ => assert_eq!(
+                        w.num_bytes_would_written(),
+                        *c.want_res.as_ref().unwrap(),
+                        "case_index={}, test_case={:?}",
+                        i,
+                        c
+                    ),
+                },
+                Err(e) => assert_eq!(&e, c.want_res.as_ref().err().unwrap()),
+            }
+            assert_eq!(&buf, c.want_buf, "case_index={}, test_case={:?}", i, c);
             buf.clear();
         }
     }
 
-    // #[test]
-    // fn test_too_big_scale() {
-    //     let mut buf = String::new();
-    //     let len = 5;
-    //     let n = 1024;
-    //     let res = humanize_number(&mut buf, len, n, "", Scale::Scale(7), Default::default());
-    //     assert!(res.is_err());
-    //     assert_eq!(res.err().unwrap(), HumanizeNumberError::TooBigScale);
-    // }
+    #[test]
+    fn test_too_big_scale() {
+        let mut buf = String::new();
+        let len = 5;
+        let n = 1024;
+        let res = humanize_number(&mut buf, len, n, "", Scale::Scale(7), Default::default());
+        assert!(res.is_err());
+        assert_eq!(res.err().unwrap(), HumanizeNumberError::TooBigScale);
+    }
 
-    // #[test]
-    // fn test_invalid_flags() {
-    //     let mut buf = String::new();
-    //     let len = 5;
-    //     let n = 1024;
-    //     let res = humanize_number(
-    //         &mut buf,
-    //         len,
-    //         n,
-    //         "",
-    //         Scale::AutoScale,
-    //         Flags::DIVISOR_1000 | Flags::IEC_PREFIXES,
-    //     );
-    //     assert!(res.is_err());
-    //     assert_eq!(res.err().unwrap(), HumanizeNumberError::InvalidFlags);
-    // }
+    #[test]
+    fn test_invalid_flags() {
+        let mut buf = String::new();
+        let len = 5;
+        let n = 1024;
+        let res = humanize_number(
+            &mut buf,
+            len,
+            n,
+            "",
+            Scale::AutoScale,
+            Flags::DIVISOR_1000 | Flags::IEC_PREFIXES,
+        );
+        assert!(res.is_err());
+        assert_eq!(res.err().unwrap(), HumanizeNumberError::InvalidFlags);
+    }
 }
