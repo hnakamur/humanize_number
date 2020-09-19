@@ -33,7 +33,7 @@
 #[macro_use]
 extern crate bitflags;
 
-use std::fmt::Write;
+use std::fmt::{self, Write};
 use std::result;
 use thiserror::Error;
 
@@ -43,7 +43,6 @@ const MAX_SCALE: usize = 6;
 pub enum Scale {
     Scale(usize),
     AutoScale,
-    GetScale,
 }
 
 bitflags! {
@@ -157,11 +156,6 @@ pub fn humanize_number(
     }
     baselen += suffix.len();
 
-    /* Check if enough room for `x y' + suffix */
-    if len < baselen {
-        return Err(HumanizeNumberError::TooSmallLength);
-    }
-
     let mut i: usize;
     match scale {
         Scale::Scale(scale) => {
@@ -197,11 +191,6 @@ pub fn humanize_number(
                 remainder = quotient % divisor;
                 quotient /= divisor;
                 i += 1;
-            }
-
-            match scale {
-                Scale::GetScale => return Ok(i),
-                _ => (),
             }
         }
     }
@@ -243,14 +232,126 @@ pub fn humanize_number(
             return Err(HumanizeNumberError::FormatError(e));
         }
     }
-    let wanted_len = buf.len() - pre_len;
-    buf.truncate(pre_len + len);
-    Ok(wanted_len)
+    let formatted_len = buf.len() - pre_len;
+    // buf.truncate(pre_len + len);
+    Ok(formatted_len)
+}
+
+fn len_utf8_at(s: &str, i: usize) -> usize {
+    let b = s.as_bytes()[i];
+    if b & 0b1000_0000 == 0 {
+        1
+    } else if b & 0b1110_0000u8 == 0b1100_0000u8 {
+        2
+    } else if b & 0b1111_0000u8 == 0b1110_0000u8 {
+        3
+    } else if b & 0b1111_1000u8 == 0b1111_0000u8 {
+        4
+    } else {
+        panic!("index not at char boundary: {}", i);
+    }
+}
+
+struct DiscardWriter {
+    n: usize,
+}
+
+impl DiscardWriter {
+    fn new() -> Self {
+        Self { n: 0 }
+    }
+
+    fn num_bytes_supposed_written(&self) -> usize {
+        self.n
+    }
+}
+
+impl Write for DiscardWriter {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.n += s.len();
+        Ok(())
+    }
+}
+
+struct LimitedWriter<'a, T: ?Sized + 'a> {
+    inner: &'a mut T,
+    limit: usize,
+    n: usize,
+}
+
+impl<'a, T> LimitedWriter<'a, T> {
+    fn new(inner: &'a mut T, limit: usize) -> Self {
+        Self { inner, limit, n: 0 }
+    }
+
+    fn num_bytes_supposed_written(&self) -> usize {
+        self.n
+    }
+}
+
+impl<T: Write + ?Sized> fmt::Write for LimitedWriter<'_, T> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let mut i = 0usize;
+        while i < s.len() {
+            let len = len_utf8_at(&s, i);
+            if i + len > self.limit {
+                break;
+            }
+            i += len;
+        }
+        self.inner.write_str(&s[0..i])?;
+        self.n += s.len();
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_len_utf8_at() {
+        let s = "\u{0024}\u{00A2}\u{20AC}\u{10348}";
+        assert_eq!(len_utf8_at(s, 0), 1);
+        assert_eq!(len_utf8_at(s, 1), 2);
+        assert_eq!(len_utf8_at(s, 3), 3);
+        assert_eq!(len_utf8_at(s, 6), 4);
+    }
+
+    #[test]
+    fn test_discard_writer() {
+        let mut w = DiscardWriter::new();
+        write!(&mut w, "\u{0024}\u{00A2}\u{20AC}\u{10348}").unwrap();
+        assert_eq!(w.num_bytes_supposed_written(), 10);
+    }
+
+    #[test]
+    fn test_limited_writer() {
+        let mut buf = String::new();
+        let mut w = LimitedWriter::new(&mut buf, 4);
+        write!(&mut w, "\u{0024}\u{00A2}\u{20AC}\u{10348}").unwrap();
+        assert_eq!(w.num_bytes_supposed_written(), 10);
+        assert_eq!(buf, "\u{0024}\u{00A2}");
+
+        buf.clear();
+        let mut w = LimitedWriter::new(&mut buf, 3);
+        write!(&mut w, "\u{0024}\u{00A2}\u{20AC}\u{10348}").unwrap();
+        assert_eq!(w.num_bytes_supposed_written(), 10);
+        assert_eq!(buf, "\u{0024}\u{00A2}");
+
+        buf.clear();
+        let mut w = LimitedWriter::new(&mut buf, 6);
+        write!(&mut w, "\u{0024}\u{00A2}\u{20AC}\u{10348}").unwrap();
+        assert_eq!(w.num_bytes_supposed_written(), 10);
+        assert_eq!(buf, "\u{0024}\u{00A2}\u{20AC}");
+    }
+
+    #[test]
+    #[should_panic(expected = "index not at char boundary: 7")]
+    fn test_len_utf8_at_not_char_boundary() {
+        const S: &str = "\u{0024}\u{00A2}\u{20AC}\u{10348}";
+        len_utf8_at(S, 7);
+    }
 
     #[test]
     fn test_humanize_number() {
@@ -261,7 +362,7 @@ mod tests {
             num: i64,
             flags: Flags,
             scale: Scale,
-            buf_len: usize,
+            len: usize,
         };
 
         impl<'a> TestCase<'a> {
@@ -271,7 +372,7 @@ mod tests {
                 num: i64,
                 flags: Flags,
                 scale: Scale,
-                buf_len: usize,
+                len: usize,
             ) -> Self {
                 Self {
                     want_res,
@@ -279,7 +380,7 @@ mod tests {
                     num,
                     flags,
                     scale,
-                    buf_len,
+                    len,
                 }
             }
 
@@ -287,7 +388,7 @@ mod tests {
                 want_res: Result<usize>,
                 want_buf: &'a str,
                 num: i64,
-                buf_len: usize,
+                len: usize,
             ) -> Self {
                 Self::new(
                     want_res,
@@ -295,7 +396,7 @@ mod tests {
                     num,
                     Flags::DIVISOR_1000,
                     Scale::AutoScale,
-                    buf_len,
+                    len,
                 )
             }
 
@@ -303,7 +404,7 @@ mod tests {
                 want_res: Result<usize>,
                 want_buf: &'a str,
                 num: i64,
-                buf_len: usize,
+                len: usize,
             ) -> Self {
                 Self::new(
                     want_res,
@@ -311,7 +412,7 @@ mod tests {
                     num,
                     Default::default(),
                     Scale::AutoScale,
-                    buf_len,
+                    len,
                 )
             }
 
@@ -320,7 +421,7 @@ mod tests {
                 want_buf: &'a str,
                 num: i64,
                 scale: usize,
-                buf_len: usize,
+                len: usize,
             ) -> Self {
                 Self::new(
                     want_res,
@@ -328,7 +429,7 @@ mod tests {
                     num,
                     Flags::DIVISOR_1000,
                     Scale::Scale(scale),
-                    buf_len,
+                    len,
                 )
             }
 
@@ -337,7 +438,7 @@ mod tests {
                 want_buf: &'a str,
                 num: i64,
                 scale: usize,
-                buf_len: usize,
+                len: usize,
             ) -> Self {
                 Self::new(
                     want_res,
@@ -345,7 +446,7 @@ mod tests {
                     num,
                     Default::default(),
                     Scale::Scale(scale),
-                    buf_len,
+                    len,
                 )
             }
         }
@@ -678,37 +779,37 @@ mod tests {
         ];
         let mut buf = String::new();
         for c in &test_cases {
-            let res = humanize_number(&mut buf, c.buf_len, c.num, "", c.scale, c.flags);
+            let res = humanize_number(&mut buf, c.len, c.num, "", c.scale, c.flags);
             assert_eq!(buf, c.want_buf, "test_case={:?}", c);
             assert_eq!(res, c.want_res, "test_case={:?}", c);
             buf.clear();
         }
     }
 
-    #[test]
-    fn test_too_big_scale() {
-        let mut buf = String::new();
-        let len = 5;
-        let n = 1024;
-        let res = humanize_number(&mut buf, len, n, "", Scale::Scale(7), Default::default());
-        assert!(res.is_err());
-        assert_eq!(res.err().unwrap(), HumanizeNumberError::TooBigScale);
-    }
+    // #[test]
+    // fn test_too_big_scale() {
+    //     let mut buf = String::new();
+    //     let len = 5;
+    //     let n = 1024;
+    //     let res = humanize_number(&mut buf, len, n, "", Scale::Scale(7), Default::default());
+    //     assert!(res.is_err());
+    //     assert_eq!(res.err().unwrap(), HumanizeNumberError::TooBigScale);
+    // }
 
-    #[test]
-    fn test_invalid_flags() {
-        let mut buf = String::new();
-        let len = 5;
-        let n = 1024;
-        let res = humanize_number(
-            &mut buf,
-            len,
-            n,
-            "",
-            Scale::AutoScale,
-            Flags::DIVISOR_1000 | Flags::IEC_PREFIXES,
-        );
-        assert!(res.is_err());
-        assert_eq!(res.err().unwrap(), HumanizeNumberError::InvalidFlags);
-    }
+    // #[test]
+    // fn test_invalid_flags() {
+    //     let mut buf = String::new();
+    //     let len = 5;
+    //     let n = 1024;
+    //     let res = humanize_number(
+    //         &mut buf,
+    //         len,
+    //         n,
+    //         "",
+    //         Scale::AutoScale,
+    //         Flags::DIVISOR_1000 | Flags::IEC_PREFIXES,
+    //     );
+    //     assert!(res.is_err());
+    //     assert_eq!(res.err().unwrap(), HumanizeNumberError::InvalidFlags);
+    // }
 }
