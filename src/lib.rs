@@ -284,47 +284,27 @@ impl<'a, T> LimitedWriter<'a, T> {
 
 impl<T: Write + ?Sized> fmt::Write for LimitedWriter<'_, T> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let mut i = 0usize;
-        while i < s.len() {
-            let len = len_utf8_at(&s, i);
-            if self.n + i + len > self.limit {
-                break;
+        if self.n + s.len() <= self.limit {
+            self.inner.write_str(&s)?;
+        } else {
+            let mut char_indices = s.char_indices();
+            let mut i = 0;
+            while let Some((j, _)) = char_indices.next() {
+                if self.n + j > self.limit {
+                    break;
+                }
+                i = j;
             }
-            i += len;
+            self.inner.write_str(&s[0..i])?;
         }
-        self.inner.write_str(&s[0..i])?;
         self.n += s.len();
         Ok(())
-    }
-}
-
-fn len_utf8_at(s: &str, i: usize) -> usize {
-    let b = s.as_bytes()[i];
-    if b & 0b1000_0000 == 0 {
-        1
-    } else if b & 0b1110_0000u8 == 0b1100_0000u8 {
-        2
-    } else if b & 0b1111_0000u8 == 0b1110_0000u8 {
-        3
-    } else if b & 0b1111_1000u8 == 0b1111_0000u8 {
-        4
-    } else {
-        panic!("index not at char boundary: {}", i);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_len_utf8_at() {
-        let s = "\u{0024}\u{00A2}\u{20AC}\u{10348}";
-        assert_eq!(len_utf8_at(s, 0), 1);
-        assert_eq!(len_utf8_at(s, 1), 2);
-        assert_eq!(len_utf8_at(s, 3), 3);
-        assert_eq!(len_utf8_at(s, 6), 4);
-    }
 
     #[test]
     fn test_discard_writer() {
@@ -335,36 +315,49 @@ mod tests {
 
     #[test]
     fn test_limited_writer() {
-        let mut buf = String::new();
-        let mut w = LimitedWriter::new(&mut buf, 4);
-        write!(&mut w, "\u{0024}\u{00A2}\u{20AC}\u{10348}").unwrap();
-        assert_eq!(w.num_bytes_would_written(), 10);
-        assert_eq!(buf, "\u{0024}\u{00A2}");
-
-        buf.clear();
-        let mut w = LimitedWriter::new(&mut buf, 3);
-        write!(&mut w, "\u{0024}\u{00A2}\u{20AC}\u{10348}").unwrap();
-        assert_eq!(w.num_bytes_would_written(), 10);
-        assert_eq!(buf, "\u{0024}\u{00A2}");
-
-        buf.clear();
-        let mut w = LimitedWriter::new(&mut buf, 6);
-        write!(&mut w, "\u{0024}\u{00A2}\u{20AC}\u{10348}").unwrap();
-        assert_eq!(w.num_bytes_would_written(), 10);
-        assert_eq!(buf, "\u{0024}\u{00A2}\u{20AC}");
-
-        buf.clear();
-        let mut w = LimitedWriter::new(&mut buf, 4);
-        write!(&mut w, "1000 ").unwrap();
-        assert_eq!(w.num_bytes_would_written(), 5);
-        assert_eq!(buf, "1000");
-    }
-
-    #[test]
-    #[should_panic(expected = "index not at char boundary: 7")]
-    fn test_len_utf8_at_not_char_boundary() {
-        const S: &str = "\u{0024}\u{00A2}\u{20AC}\u{10348}";
-        len_utf8_at(S, 7);
+        let s = "\u{0024}\u{00A2}\u{20AC}\u{10348}";
+        #[derive(Debug)]
+        struct TestCase<'a> {
+            limit: usize,
+            want: &'a str,
+        }
+        const CASES: [TestCase; 8] = [
+            TestCase { limit: 0, want: "" },
+            TestCase {
+                limit: 1,
+                want: "\u{0024}",
+            },
+            TestCase {
+                limit: 2,
+                want: "\u{0024}",
+            },
+            TestCase {
+                limit: 3,
+                want: "\u{0024}\u{00A2}",
+            },
+            TestCase {
+                limit: 5,
+                want: "\u{0024}\u{00A2}",
+            },
+            TestCase {
+                limit: 6,
+                want: "\u{0024}\u{00A2}\u{20AC}",
+            },
+            TestCase {
+                limit: 9,
+                want: "\u{0024}\u{00A2}\u{20AC}",
+            },
+            TestCase {
+                limit: 10,
+                want: "\u{0024}\u{00A2}\u{20AC}\u{10348}",
+            },
+        ];
+        for (i, c) in CASES.iter().enumerate() {
+            let mut buf = String::new();
+            let mut w = LimitedWriter::new(&mut buf, c.limit);
+            write!(&mut w, "{}", s).unwrap();
+            assert_eq!(buf, c.want, "i={}, buf={}, c={:?}", i, buf, c);
+        }
     }
 
     #[test]
