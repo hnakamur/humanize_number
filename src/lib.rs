@@ -199,9 +199,8 @@ pub fn humanize_number(
                 i += 1;
             }
 
-            match scale {
-                Scale::GetScale => return Ok(i),
-                _ => (),
+            if scale == Scale::GetScale {
+                return Ok(i);
             }
         }
     }
