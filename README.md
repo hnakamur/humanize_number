@@ -5,4 +5,4 @@ a Rust port of reeBSD [humanize_number (3)](https://www.freebsd.org/cgi/man.cgi?
 
 ## License
 
-BSD-2-Clause-FreeBSD
+BSD-2-Clause
