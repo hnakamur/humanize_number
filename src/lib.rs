@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+// SPDX-License-Identifier: BSD-2-Clause
 //
 // Copyright (c) 1997, 1998, 1999, 2002 The NetBSD Foundation, Inc.
 // Copyright 2013 John-Mark Gurney <jmg@FreeBSD.org>
